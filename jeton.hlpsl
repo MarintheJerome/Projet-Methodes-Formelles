@@ -1,0 +1,161 @@
+%% PROTOCOL: NSPK: Needham-Schroeder Public-Key Protocol
+%% VARIANT: original version (of 1978) without key server
+%% PURPOSE: Two-party mutual autentication
+%% ALICE_BOB:
+%% C → J : {Nc.C, PKc}_PKj
+%% J → C : {Nc.Nj}_PKc
+%% C → J : {Nj}_PKj
+%% J → C : {type, Jeton}_PKc
+%% C → S : {Nc_2.C, PKc, Jeton}_PKs
+%% S → J : {Jeton}_PKj
+%% J → S : {ok?}_PKs
+%% S → C : {NC_2.c, ok, Ns}_PKc
+%% C → S : {Ns}_PKs%% 1. A  - {Na.A}_PKb ----> B
+%% 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% définition du rôle alice, initiant le protocole
+role client (J, C, S: agent,             
+            PKc, PKj, PKs: public_key,      
+            SND, RCV: channel(dy)) 
+played_by C def=
+
+  local State: nat, 
+        Nc, Nj, Nc2, Ns, Jeton: text,
+	Ok, Ok2: bool
+
+  init State:=0
+
+  transition  
+   
+    0.  State=0 /\ RCV(start) =|> 
+	State':=1 /\ Nc':=new() /\ SND({Nc'.C.PKc}_PKj) /\ secret(Nc', nc, {C,J}) %%/\ witness(A, B, alice_bob_na, Na')
+
+
+    2.  State=1 /\ RCV({Nc.Nj'}_PKc) =|> 
+	State':=2 /\ SND({Nc'}_PKj) %%/\ request(A, B, alice_bob_nb, Nb')
+
+    3. State=2 /\ RCV({Ok'.Jeton'}_PKc) /\ Ok' = true =|>
+       State':=3 /\ Nc2':=new() /\ SND({Nc2'.C.PKc.Jeton}_PKs)
+
+    4. State=3 /\ RCV({Nc2.Ok2'.Ns'}_PKc) /\ Ok2' = true =|>
+	State':=4 /\ SND({Ns'}_PKs)
+
+   nopeJeton. State=2 /\ RCV({Ok'}_PKc) /\ Ok' = false =|> 
+	State':=99
+
+   incorrectJeton. State=3 /\ RCV({Nc2.Ok2'}_PKc) /\ Ok2' = false =|>
+	State':=99
+end role
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% role jeton à écrire
+role jeton (J, C, S: agent,             
+            PKj, PKs: public_key,
+            SND, RCV: channel(dy)) 
+played_by J def=
+
+  local State: nat, 
+        Nc, Nj, Nc2: text,
+	Ok, Ok2: bool,
+	Jeton: text,
+	PKc: public_key
+
+%% Gérer le stock
+
+  init State:=0
+
+  transition  
+   
+    0.  State=0 /\ RCV({Nc'.C.PKc'}_PKj) =|> 
+	State':=1 /\ Nj':=new() /\ SND({Nc'.Nj'}_PKc') /\ secret(Nj', nj, {J,C}) %%/\ witness(A, B, alice_bob_na, Na')
+
+
+    2.  State=1 /\ RCV({Nj'}_PKc) =|> 
+	State':=2 /\ Jeton':= new() /\ SND({true.Jeton}_PKc) %%/\ request(A, B, alice_bob_nb, Nb')
+
+    3. State=2 /\ RCV({Jeton}_PKs) =|>
+	State':=3 /\ SND({true}_PKs)
+
+end role
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% role service à écrire
+role service(J, C, S: agent,             
+            PKj, PKs: public_key,      
+            SND, RCV: channel(dy)) 
+played_by S def=
+
+  local State: nat, 
+        Nc, Ns: text,
+	Ok: bool,
+	Jeton: text,
+	PKc: public_key
+
+%% Gérer le stock
+
+  init State:=0
+
+  transition  
+   
+    0.  State=0 /\ RCV({Nc'.C.PKc'.Jeton'}_PKs) =|> 
+	State':=1 /\ SND({Jeton}_PKj) %%/\ secret(Nj', nj, {J,C}) %%/\ witness(A, B, alice_bob_na, Na')
+
+
+    2.  State=1 /\ RCV({Ok'}_PKs) /\ Ok' = true =|> 
+	State':=2 /\ Ns':= new() /\ SND({Nc.Ns'.Ok'}_PKc) %%/\ request(A, B, alice_bob_nb, Nb')
+
+    4. State=2 /\ RCV({Ns}_PKs) =|>
+	State':=3
+
+ jetoninvalide. State=1 /\ RCV({Ok'}_PKs) /\ Ok' = false =|>
+	State':=99 /\ SND({Nc.Ok'}_PKc)
+
+end role
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% définition du rôle caractérisant une session
+role session(C, J, S: agent, PKc, PKj, PKs: public_key) def=
+
+  local SC, RC, SJ, RJ, SS, RS: channel(dy)
+
+  composition 
+
+	 client(C, J, S, PKc, PKj, PKs, SC, RC)
+     /\   jeton(C, J, S, PKj, Pks, SJ, RJ)
+     /\ service(C, J, S, PKj, PKs, SS, RS)
+end role
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% définition du rôle caractérisant le scenario à exécuter
+role environment() def=
+
+    const c, j, s: agent,
+	  pkc, pkj, pks, pki: public_key,
+	  nc, nj, ns, jeton: protocol_id
+
+    intruder_knowledge = {c, j, s, pkj, pks, pki, inv(pki)}
+
+    composition
+
+
+%%	session(a,b,pka,pkb)
+	session(c,j,pkc,pkj) /\ session(c,i,pkc,pki) /\ session(i,j,pki,pkj) /\ session(c,s,pkc, pks) /\ session(s,j,pkj,pks) /\ session(i,s,pki,pks) /\ session(s,i,pks,pki)
+
+end role
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% pour l'instant, pas de section goal ici (donc pas de propriété à vérifier)
+goal
+  secrecy_of nc
+  secrecy_of nj
+  secrecy_of ns
+  secrecy_of jeton
+%%  authentication_on alice_bob_na
+%%  authentication_on alice_bob_nb
+end goal
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% lancement du rôle principal
+environment()pks) 
