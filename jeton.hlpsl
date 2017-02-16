@@ -56,16 +56,17 @@ end role
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% role jeton à écrire
-role jeton (C, J, S: agent,             
-            PKj, PKs, PKca: public_key,
+role jeton (J: agent,             
+            PKj, PKca: public_key,
             SND, RCV: channel(dy)) 
 played_by J def=
 
   local State: nat, 
+	C, S: agent,
         Nc, Nj, Nc2: text,
 	Ok, Ok2: bool,
 	Jeton: text,
-	PKc: public_key
+	PKc, PKs: public_key
 
 %% Gérer le stock
 
@@ -73,15 +74,16 @@ played_by J def=
 
   transition  
    
-    0.  State=0 /\ RCV({C.PKc'}_inv(PKca)) =|> 
-	State':=1 /\ Nj':=new() /\ SND({Nj'}_PKc') /\ secret(Nj', nj, {J,C}) /\ witness(J, C, jeton_client_nj, Nj')
+    0.  State=0 /\ RCV({C'.PKc'}_inv(PKca)) =|> 
+	State':=1 /\ Nj':=new() /\ SND({Nj'}_PKc') /\ secret(Nj', nj, {J,C'}) /\ witness(J, C', jeton_client_nj, Nj')
 
 
     1.  State=1 /\ RCV({Nc'.Nj}_PKj) =|> 
 	State':=2 /\ Jeton':= new() /\ SND({Nc'.true.Jeton'}_PKc) /\ secret(Jeton', jeton, {J, S,C}) /\ request(C, J, client_jeton_nc, Nc')
 
-    2. State=2 /\ RCV({Jeton}_PKj) =|> %% Attaque par  brute force
-	State':=3 /\ SND({true}_PKs)
+    2.  State=2 /\ RCV({S'.PKs'}_inv(PKca).{Jeton}_PKj) =|> 
+	State':=3 /\ SND({true}_PKs')
+
 
 end role
 
@@ -132,12 +134,12 @@ role createClient(C, J, S: agent, PKc, PKj, PKs, PKca: public_key) def=
 	client(C, J, S, PKc, PKj, PKs, PKca, {C.PKc}_inv(PKca), SC, RC)
 end role
 
-role createJeton(C, J, S: agent, PKj, PKs, PKca: public_key) def=
+role createJeton(J: agent, PKj, PKca: public_key) def=
 
   local SC, RC: channel(dy)
 
   composition 
-     jeton(C, J, S, PKj, PKs, PKca, SC, RC)
+     jeton(J, PKj, PKca, SC, RC)
 end role
 
 
@@ -168,18 +170,18 @@ role environment() def=
 %%	session(a,b,pka,pkb)
 
 	 createClient(c, j, s, pkc, pkj, pks, pkca)
-     /\ createClient(c1, j, s, pkc1, pkj, pks, pkca)
-     /\ createClient(c2, j, s, pkc2, pkj, pks, pkca)
-     /\ createClient(c, j, s1, pkc, pkj, pks1, pkca)
-     /\ createClient(c1, j, s1, pkc1, pkj, pks1, pkca)
-     /\ createClient(c2, j, s1, pkc2, pkj, pks1, pkca)
-     /\   createJeton(c, j, s, pkj, pks, pkca)
+%     /\ createClient(c1, j, s, pkc1, pkj, pks, pkca)
+%     /\ createClient(c2, j, s, pkc2, pkj, pks, pkca)
+%     /\ createClient(c, j, s1, pkc, pkj, pks1, pkca)
+%     /\ createClient(c1, j, s1, pkc1, pkj, pks1, pkca)
+%     /\ createClient(c2, j, s1, pkc2, pkj, pks1, pkca)
+     /\   createJeton(j, pkj, pkca)
      /\ createService(c, j, s, pkj, pks, pkca)
-     /\ createService(c1, j, s, pkj, pks, pkca)
-     /\ createService(c2, j, s, pkj, pks, pkca)
-     /\ createService(c, j, s1, pkj, pks1, pkca)
-     /\ createService(c1, j, s1, pkj, pks1, pkca)
-     /\ createService(c2, j, s1, pkj, pks1, pkca)
+%     /\ createService(c1, j, s, pkj, pks, pkca)
+%     /\ createService(c2, j, s, pkj, pks, pkca)
+%    /\ createService(c, j, s1, pkj, pks1, pkca) 
+%   /\ createService(c1, j, s1, pkj, pks1, pkca)
+%    /\ createService(c2, j, s1, pkj, pks1, pkca)
 
 end role
 
