@@ -13,10 +13,10 @@
 %% C → S : {Ns}_PKs%% 1. A  - {Na.A}_PKb ----> B
 %% 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% définition du rôle alice, initiant le protocole
-role client (C, J, S: agent,             
-            PKc, PKj, PKs, PKca: public_key, 
-	    CertC: {agent.public_key}_inv(public_key),     
+%% role client
+role client(C, J, S: agent,             
+            PKc, PKj, PKs, PKca: public_key,
+	    CertC: {agent.public_key}_inv(public_key),
             SND, RCV: channel(dy)) 
 played_by C def=
 
@@ -24,17 +24,18 @@ played_by C def=
         Nc, Nj, Nc2, Ns, Jeton: text,
 	Ok, Ok2: bool
 
+%% Gérer le stock
+
   init State:=0
 
   transition  
    
-    0.  State=0 /\ RCV(start) =|> 
-	State':=1 /\  SND(CertC) 
+   
+    0. State=0 /\ RCV(start) =|> 
+       State':=1 /\  SND(CertC) 
 
-
-    1.  State=1 /\ RCV({Nj'}_PKc) =|> 
-	State':=2 /\ Nc':=new() /\ SND({Nc'.Nj'}_PKj) /\ witness(C, J, client_jeton_nc, Nc') /\ secret(Nc', nc, {C,J}) /\ request(J, C, jeton_client_nj, Nj')
-
+    1. State=1 /\ RCV({Nj'}_PKc) =|> 
+       State':=2 /\ Nc':=new() /\ SND({Nc'.Nj'}_PKj) /\ witness(C, J, client_jeton_nc, Nc') /\ secret(Nc', nc, {C,J}) /\ request(J, C, jeton_client_nj, Nj')
 
     2. State=2 /\ RCV({Nc.Ok'.Jeton'}_PKc) /\ Ok' = true =|>
        State':=3 /\ SND(CertC.auth) 
@@ -50,6 +51,7 @@ played_by C def=
 
    incorrectJeton. State=4 /\ RCV({Nc2.Ok2'}_PKc) /\ Ok2' = false =|>
 	State':=99
+
 end role
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -104,7 +106,7 @@ played_by S def=
   transition  
    
     0. State=0 /\ RCV({C.PKc'}_inv(PKca).auth) =|> 
-	 State':=1 /\ Ns':= new() /\ SND({Ns'}_PKc) /\ witness(S, C, service_client_ns, Ns') /\ secret(Ns', ns, {S,C}) 
+	 State':=1 /\ Ns':= new() /\ SND({Ns'}_PKc') /\ witness(S, C, service_client_ns, Ns') /\ secret(Ns', ns, {S,C}) 
 
     1.  State=1 /\ RCV({Nc2'.Ns.Jeton'}_PKs) =|> 
 	State':=2 /\ SND({Jeton'}_PKj) /\ request(C, S, client_service_nc2, Nc2')
@@ -122,34 +124,62 @@ end role
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% définition du rôle caractérisant une session
-role session(C, J, S: agent, PKc, PKj, PKs, PKca: public_key) def=
+role createClient(C, J, S: agent, PKc, PKj, PKs, PKca: public_key) def=
 
-  local SC, RC, SJ, RJ, SS, RS: channel(dy)
+  local SC, RC: channel(dy)
 
   composition 
-
-	 client(C, J, S, PKc, PKj, PKs, PKca, {C.PKc}_inv(PKca), SC, RC)
-     /\   jeton(C, J, S, PKj, PKs, PKca, SJ, RJ)
-     /\ service(C, J, S, PKj, PKs, PKca, SS, RS)
+	client(C, J, S, PKc, PKj, PKs, PKca, {C.PKc}_inv(PKca), SC, RC)
 end role
+
+role createJeton(C, J, S: agent, PKj, PKs, PKca: public_key) def=
+
+  local SC, RC: channel(dy)
+
+  composition 
+     jeton(C, J, S, PKj, PKs, PKca, SC, RC)
+end role
+
+
+role createService(C, J, S: agent, PKj, PKs, PKca: public_key) def=
+
+  local SC, RC: channel(dy)
+
+  composition 
+     service(C, J, S, PKj, PKs, PKca, SC, RC)
+end role
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% définition du rôle caractérisant le scenario à exécuter
 role environment() def=
 
-    const c, j, s: agent,
-	  pkc, pkj, pks, pki, pkca: public_key,
+    const c, j, s, c1, c2, i, s1: agent,
+	  pkc, pkj, pkj, pki, pkca, pkc1, pkc2, pki, pks, pks1: public_key,
 	  nc, nc2, nj, ns, jeton,
  	  client_jeton_nc, jeton_client_nj,
 	  client_service_nc2, service_client_ns: protocol_id,
 	  true, false: bool,
 	  auth: text
 
-    intruder_knowledge = {c, j, s, pkj, pks, pki, inv(pki), pkca}
+    intruder_knowledge = {c, j, s, pkj, pks, pks1, pki, inv(pki), pkca}
 
     composition
 %%	session(a,b,pka,pkb)
-	session(c,j,s, pkc, pkj, pks, pkca)
+
+	 createClient(c, j, s, pkc, pkj, pks, pkca)
+     /\ createClient(c1, j, s, pkc1, pkj, pks, pkca)
+     /\ createClient(c2, j, s, pkc2, pkj, pks, pkca)
+     /\ createClient(c, j, s1, pkc, pkj, pks1, pkca)
+     /\ createClient(c1, j, s1, pkc1, pkj, pks1, pkca)
+     /\ createClient(c2, j, s1, pkc2, pkj, pks1, pkca)
+     /\   createJeton(c, j, s, pkj, pks, pkca)
+     /\ createService(c, j, s, pkj, pks, pkca)
+     /\ createService(c1, j, s, pkj, pks, pkca)
+     /\ createService(c2, j, s, pkj, pks, pkca)
+     /\ createService(c, j, s1, pkj, pks1, pkca)
+     /\ createService(c1, j, s1, pkj, pks1, pkca)
+     /\ createService(c2, j, s1, pkj, pks1, pkca)
 
 end role
 
