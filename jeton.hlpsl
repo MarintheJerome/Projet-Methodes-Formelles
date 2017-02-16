@@ -16,7 +16,8 @@
 %% role client
 role client(C, J, S: agent,             
             PKc, PKj, PKs, PKca: public_key,
-	    CertC: {agent.public_key}_inv(public_key),
+	    %CertC: {agent.public_key}_inv(public_key),
+		CertC: message,
             SND, RCV: channel(dy)) 
 played_by C def=
 
