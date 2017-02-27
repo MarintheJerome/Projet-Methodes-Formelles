@@ -15,7 +15,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% role client
 role client(C, J, S: agent,             
-            PKc, PKj, PKs, PKca: public_key,
+            PKc, PKca: public_key,
 	    %CertC: {agent.public_key}_inv(public_key),
 	    CertC: message,
             SND, RCV: channel(dy)) 
@@ -23,7 +23,9 @@ played_by C def=
 
   local State: nat, 
         Nc, Nj, Nc2, Ns, Jeton: text,
-	Ok, Ok2: bool
+	CertJ: message,
+	Ok, Ok2: bool,
+	PKj, PKs: public_key
 
 %% Gérer le stock
 
@@ -35,11 +37,11 @@ played_by C def=
     0. State=0 /\ RCV(start) =|> 
        State':=1 /\  SND(CertC.ask) 
 
-    1. State=1 /\ RCV({ack}_PKc) =|> 
-       State':=2 /\ Nc':=new() /\ SND({C.Nc'}_PKj) /\ secret(Nc', nc, {C,J}) 
+    1. State=1 /\ RCV({ack.{J.PKj'}_inv(PKca)}_PKc) =|> 
+       State':=2 /\ Nc':=new() /\ SND({C.Nc'}_PKj') /\ secret(Nc', nc, {C,J}) 
 
     2. State=2 /\ RCV({J.Nc.Nj'}_PKc) =|>
-	State':=3 /\ SND({Nj'}_PKj)  /\ request(C, J, jeton_client_nj, Nj') /\ witness(C, J, client_jeton_nc, Nc.Nj') 
+	State':=3 /\ SND({C.Nj'}_PKj)  /\ request(C, J, jeton_client_nj, Nj'.Nc) /\ witness(C, J, client_jeton_nc, Nc.Nj') 
 
     3. State=3 /\ RCV({authOk}_PKc) =|>
        State':=4 /\ SND({askJeton}_PKj)
@@ -47,11 +49,11 @@ played_by C def=
     4. State=4 /\ RCV({Ok'.Jeton'}_PKc) /\ Ok' = true =|>
        State':=5 /\ SND(CertC.auth)  /\ secret(Jeton', jeton, {J, S,C})
 
-    5. State=5 /\ RCV({ack}_PKc) =|> 
-       State':=6 /\ Nc2':=new() /\ SND({C.Nc2'}_PKs) /\ secret(Nc2', nc2, {C, S})
+    5. State=5 /\ RCV({ack.{S.PKs'}_inv(PKca)}_PKc) =|> 
+       State':=6 /\ Nc2':=new() /\ SND({C.Nc2'}_PKs') /\ secret(Nc2', nc2, {C, S})
 
     6. State=6 /\ RCV({S.Nc2.Ns'}_PKc) =|>
-	State':=7 /\ SND({Ns'}_PKj)  /\ request(C, S, service_client_ns, Ns') /\ witness(C, S, client_service_nc2, Nc2.Ns') 
+	State':=7 /\ SND({Ns'}_PKs)  /\ request(C, S, service_client_ns, Ns') /\ witness(C, S, client_service_nc2, Nc2.Ns') 
 
     7. State=7 /\ RCV({authOk}_PKc) =|>
        State':=8 /\ SND({Jeton}_PKs)
@@ -71,46 +73,49 @@ end role
 %% role jeton à écrire
 role jeton (J: agent,             
             PKj, PKca: public_key,
+	    CertJ: message,
             SND, RCV: channel(dy)) 
 played_by J def=
 
   local State: nat, 
 	C, S: agent,
-        Nc, Nj, Nsj, Njs: text,
+        Nc, Nj, Nsj, Njs: text,	
 	Ok, Ok2: bool,
 	Jeton: text,
-	PKc, PKs: public_key
+	PKc, PKs: public_key,
+	FreeJetons, UsedJetons: text set
 
 %% Gérer le stock
-
-  init State:=0
+  init State:=0 
 
   transition  
    
-    0.  State=0 /\ RCV({C'.PKc'}_inv(PKca).ask) =|> 
-	State':=1 /\ SND({ack}_PKc')
+    c0.  State=0 /\ RCV({C'.PKc'}_inv(PKca).ask) =|> 
+	State':=1 /\ SND({ack.CertJ}_PKc')
 
-    1.  State=1 /\ RCV({C.Nc'}_PKj) =|> 
-	State':=2 /\ Nj':=new() /\ SND({J.Nc'.Nj'}_PKc) /\  secret(Nj', nj, {J,C})  /\  witness(J, C, jeton_client_nj, Nj') 
+    c1.  State=1 /\ RCV({C.Nc'}_PKj) =|> 
+	State':=2 /\ Nj':=new() /\ SND({J.Nc'.Nj'}_PKc) /\  secret(Nj', nj, {J,C})  /\  witness(J, C, jeton_client_nj, Nj'.Nc') 
 
-    2.  State=2 /\ RCV({Nj}_PKj) =|> 
+    c2.  State=2 /\ RCV({C.Nj}_PKj) =|> 
 	State':=3  /\ request(J, C, client_jeton_nc, Nc.Nj) /\ SND({authOk}_PKc) 
 
-    3.  State=3 /\ RCV({askJeton}_PKj) =|> 
+    c3.  State=3 /\ RCV({askJeton}_PKj)=|> 
 	State':=4 /\ Jeton':= new() /\ SND({true.Jeton'}_PKc)
 
-    4.  State=4 /\ RCV({S'.PKs'}_inv(PKca).check) =|> 
-	State':=5 /\ SND({ack}_PKs')
+    s4.  State=4 /\ RCV({S'.PKs'}_inv(PKca).check) =|> 
+	State':=5 /\ SND({ack.CertJ}_PKs')
 
-    5.  State=5 /\ RCV({S.Nsj'}_PKj) =|> 
-	State':=6 /\ Njs':=new() /\ SND({J.Nsj'.Njs'}_PKc) /\  secret(Njs', njs, {J,S})  /\  witness(J, S, jeton_service_njs, Njs') 
+    s5.  State=5 /\ RCV({S.Nsj'}_PKj) =|> 
+	State':=6 /\ Njs':=new() /\ SND({J.Njs'.Nsj'}_PKs) /\  secret(Njs', njs, {J,S})  /\  witness(J, S, jeton_service_njs, Njs'.Nsj') 
 
-    6.  State=6 /\ RCV({Njs}_PKj) =|> 
+    s6.  State=6 /\ RCV({S.Njs}_PKj) =|> 
 	State':=7  /\ request(J, S, jeton_service_nsj, Nsj.Njs) /\ SND({authOk}_PKs) 
 
-    7.  State=7 /\ RCV({jeton}_PKj) =|> 
+    s7.  State=7 /\ RCV({Jeton}_PKj) =|> 
 	State':=8 /\ SND({true}_PKs)
 
+  emptyFree.  State=999 /\ RCV({askJeton}_PKj) =|> 
+	State':=99 /\ Jeton':= new() /\ SND({true.Jeton'}_PKc)
 
 end role
 
@@ -118,7 +123,7 @@ end role
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% role service à écrire
 role service(J, S: agent,             
-            PKj, PKs, PKca: public_key,    
+            PKs, PKca: public_key,    
 	    CertS: message,  
             SND, RCV: channel(dy)) 
 played_by S def=
@@ -128,7 +133,8 @@ played_by S def=
         Nc2, Ns, Nsj, Njs: text,
 	Ok: bool,
 	Jeton: text,
-	PKc: public_key
+	PKc, PKj: public_key
+
 
 %% Gérer le stock
 
@@ -137,7 +143,7 @@ played_by S def=
   transition  
 
     0.  State=0 /\ RCV({C'.PKc'}_inv(PKca).auth) =|> 
-	State':=1 /\ SND({ack}_PKc')
+	State':=1 /\ SND({ack.CertS}_PKc')
 
     1.  State=1 /\ RCV({C.Nc2'}_PKs) =|> 
 	State':=2 /\ Ns':=new() /\ SND({S.Nc2'.Ns'}_PKc) /\  secret(Ns', ns, {S,C})  /\  witness(S, C, service_client_ns, Ns') 
@@ -146,19 +152,19 @@ played_by S def=
 	State':=3 /\ request(S, C, client_service_nc2, Nc2.Ns) /\ SND({authOk}_PKc) 
 
     3.  State=3 /\ RCV({Jeton'}_PKs) =|> 
-        State':=4 /\  SND(CertS.ask) 
+        State':=4 /\  SND(CertS.check) 
 
-    4.  State=4 /\ RCV({ack}_PKs) =|> 
-        State':=5 /\ Nsj':=new() /\ SND({S.Nsj'}_PKj) /\ secret(Nsj', nsj, {S,J}) 
+    4.  State=4 /\ RCV({ack.{J.PKj'}_inv(PKca)}_PKs) =|> 
+        State':=5 /\ Nsj':=new() /\ SND({S.Nsj'}_PKj') /\ secret(Nsj', nsj, {S,J}) 
 
-    5.  State=5 /\ RCV({J.Nsj.Njs'}_PKs) =|>
-	State':=6 /\ SND({Njs'}_PKj)  /\ request(S, J, jeton_service_njs, Njs') /\ witness(S, J, jeton_service_nsj, Nsj.Njs') 
+    5.  State=5 /\ RCV({J.Njs'.Nsj	}_PKs) =|>
+	State':=6 /\ SND({S.Njs'}_PKj)  /\ request(S, J, jeton_service_njs, Njs'.Nsj) /\ witness(S, J, jeton_service_nsj, Nsj.Njs') 
 
     6.  State=6 /\ RCV({authOk}_PKs) =|>
 	State':=7 /\ SND({Jeton}_PKj)
 
     2.  State=7 /\ RCV({Ok'}_PKs) /\ Ok' = true  =|>  
-	State':=8 /\ SND({Nc2.Ok'}_PKc) 
+	State':=99 /\ SND({Nc2.Ok'}_PKc) 
 
  jetoninvalide. State=2 /\ RCV({Ok'}_PKs) /\ Ok' = false =|>
 	State':=99 /\ SND({Nc2.Ok'}_PKc)
@@ -168,12 +174,12 @@ end role
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% définition du rôle caractérisant une session
-role createClient(C, J, S: agent, PKc, PKj, PKs, PKca: public_key) def=
+role createClient(C, J, S: agent, PKc, PKca: public_key) def=
 
   local SC, RC: channel(dy)
 
   composition 
-	client(C, J, S, PKc, PKj, PKs, PKca, {C.PKc}_(inv(PKca)), SC, RC)
+	client(C, J, S, PKc, PKca, {C.PKc}_(inv(PKca)), SC, RC)
 end role
 
 role createJeton(J: agent, PKj, PKca: public_key) def=
@@ -181,18 +187,29 @@ role createJeton(J: agent, PKj, PKca: public_key) def=
   local SC, RC: channel(dy)
 
   composition 
-     jeton(J, PKj, PKca, SC, RC)
+     jeton(J, PKj, PKca, {J.PKj}_(inv(PKca)),  SC, RC)
 end role
 
 
-role createService(J, S: agent, PKj, PKs, PKca: public_key) def=
+role createService(S ,J : agent, PKs, PKca: public_key) def=
 
   local SC, RC: channel(dy)
 
   composition 
-     service(J, S, PKj, PKs, PKca, {S.PKs}_inv(PKca), SC, RC)
+     service(J, S, PKs, PKca, {S.PKs}_inv(PKca), SC, RC)
 end role
 
+%%%%%%%%%%%%%%%%%%%%
+% Un de chaque
+
+
+role session(C, J, S: agent, PKc, PKj, PKs, PKca: public_key) def=
+
+  composition
+     createClient(C, J, S, PKc, PKca)
+  /\ createJeton(J, PKj, PKca)
+  /\ createService(S, J, PKs, PKca)
+end role
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% définition du rôle caractérisant le scenario à exécuter
@@ -210,17 +227,10 @@ role environment() def=
     intruder_knowledge = {c, j, s, pkj, pks, pks1, pki, inv(pki), pkca}
 
     composition
-%%	session(a,b,pka,pkb)
-
-        createClient(c, j, s, pkc, pkj, pks, pkca)
-     /\ createClient(c1, j, s, pkc1, pkj, pks, pkca)
-     /\ createClient(c2, j, s, pkc2, pkj, pks, pkca)
-     /\ createClient(c, j, s1, pkc, pkj, pks1, pkca)
-     /\ createClient(c1, j, s1, pkc1, pkj, pks1, pkca)
-     /\ createClient(c2, j, s1, pkc2, pkj, pks1, pkca)
-     /\   createJeton(j, pkj, pkca)
-     /\ createService(j, s, pkj, pks, pkca)
-     /\ createService(j, s1, pkj, pks1, pkca) 
+	session(c, j, s, pkc, pkj, pks, pkca)
+     /\	session(i, j, s, pki, pkj, pks, pkca)
+     /\ session(c, i, s, pkc, pki, pks, pkca)
+     /\ session(c, j, i, pkc, pkj, pki, pkca)
 
 
 end role
